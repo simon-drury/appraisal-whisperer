@@ -24,6 +24,10 @@ export default {
 				ring: 'hsl(var(--ring))',
 				background: 'hsl(var(--background))',
 				foreground: 'hsl(var(--foreground))',
+				'sfl-appraisal': 'hsl(var(--sfl-appraisal))',
+				'sfl-transitivity': 'hsl(var(--sfl-transitivity))',
+				'sfl-meaning': 'hsl(var(--sfl-meaning))',
+				'neural-glow': 'hsl(var(--neural-glow))',
 				primary: {
 					DEFAULT: 'hsl(var(--primary))',
 					foreground: 'hsl(var(--primary-foreground))'
