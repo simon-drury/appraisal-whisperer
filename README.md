@@ -1,73 +1,155 @@
-# Welcome to your Lovable project
+# Appraisal Whisperer
 
-## Project info
+SFL-based (Systemic Functional Linguistics) analysis system for live music reviews. This application provides deep linguistic analysis of performance reviews, mapping appraisal structures, transitivity patterns, and experiential meaning without sentiment bias.
 
-**URL**: https://lovable.dev/projects/92eccb30-f87d-499f-965e-84914f11a258
+## Overview
 
-## How can I edit this code?
+Appraisal Whisperer implements a sophisticated NLP agent (`AppraisalMapperAgent`) that analyzes concert and performance reviews through the lens of Systemic Functional Linguistics. The system goes beyond surface-level sentiment analysis to reveal underlying meaning structures, evaluative patterns, and semantic relationships.
 
-There are several ways of editing your application.
+### Core Analysis Features
 
-**Use Lovable**
+**Appraisal Analysis**
+- Attitude mapping (affect, judgement, appreciation)
+- Engagement analysis (monogloss/heterogloss)
+- Graduation measurement (force and focus)
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/92eccb30-f87d-499f-965e-84914f11a258) and start prompting.
+**Transitivity Mapping**
+- Process type identification (material, mental, relational, verbal, behavioural, existential)
+- Participant role analysis
+- Circumstance extraction
 
-Changes made via Lovable will be committed automatically to this repo.
+**Meaning Mapping**
+- Experiential meaning network construction
+- Semiotic torque detection (meaning drift and recursion)
+- Concept strength and connection analysis
 
-**Use your preferred IDE**
+**Multiagent Integration**
+- Event-based output format for orchestration systems
+- Standalone or orchestrated operation modes
+- Structured data export for downstream agents
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+## Tech Stack
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+- **Frontend**: Vite + React + TypeScript
+- **UI**: shadcn/ui + Tailwind CSS
+- **NLP**: OpenAI API (GPT-based SFL analysis)
+- **State Management**: React hooks
 
-Follow these steps:
+## Project Structure
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+```
+src/
+├── components/
+│   ├── AppraisalMapperAgent.tsx    # Main analysis agent component
+│   └── ui/                         # shadcn/ui components
+├── pages/
+│   ├── Index.tsx                   # Main application page
+│   └── NotFound.tsx
+├── services/
+│   └── sflAnalysisService.ts       # SFL analysis logic
+├── types/
+│   └── sfl.ts                      # TypeScript type definitions
+└── hooks/
+    └── use-toast.ts                # Toast notification hook
+```
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+## Installation
 
-# Step 3: Install the necessary dependencies.
-npm i
+### Prerequisites
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
+- Node.js (v16 or higher)
+- npm or bun
+- OpenAI API key
+
+### Setup
+
+```bash
+# Clone the repository
+git clone https://github.com/simon-drury/appraisal-whisperer.git
+cd appraisal-whisperer
+
+# Install dependencies
+npm install
+
+# Start development server
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+## Usage
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+1. **Configure API Access**
+   - Enter OpenAI API key in the interface
+   - API key is used client-side only and not stored
 
-**Use GitHub Codespaces**
+2. **Input Performance Details**
+   - Artist/Band name
+   - Event/Venue information
+   - Optional: Custom review text (or use sample data)
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+3. **Run Analysis**
+   - Click "Start SFL Analysis"
+   - System performs multi-stage linguistic analysis
+   - Results displayed in interactive tabs
 
-## What technologies are used for this project?
+4. **Explore Results**
+   - **Appraisal tab**: Attitude, engagement, and graduation metrics
+   - **Transitivity tab**: Process types and participant roles
+   - **Meaning Map tab**: Experiential meaning and semiotic torque
+   - **Export tab**: Multiagent event format (JSON)
 
-This project is built with:
+## Agent Modes
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+### Standalone Mode
+```tsx
+<AppraisalMapperAgent agentMode="standalone" />
+```
+Operates independently with full UI for direct user interaction.
 
-## How can I deploy this project?
+### Orchestrated Mode
+```tsx
+<AppraisalMapperAgent 
+  agentMode="orchestrated"
+  onAnalysisComplete={(event) => routeToNextAgent(event)}
+/>
+```
+Integrates with multiagent systems via callback-based event routing.
 
-Simply open [Lovable](https://lovable.dev/projects/92eccb30-f87d-499f-965e-84914f11a258) and click on Share -> Publish.
+## SFL Theory Background
 
-## Can I connect a custom domain to my Lovable project?
+Systemic Functional Linguistics treats language as a meaning-making resource organized into three metafunctions:
 
-Yes, you can!
+- **Interpersonal**: How speakers position themselves and interact (via Appraisal)
+- **Ideational**: How experience is represented (via Transitivity)
+- **Textual**: How information is structured and flows
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+This application focuses on interpersonal and ideational analysis to extract deep semantic structures from performance reviews.
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
+## Development
+
+```bash
+# Run development server
+npm run dev
+
+# Build for production
+npm run build
+
+# Preview production build
+npm run preview
+```
+
+## Status
+
+- Functional SFL analysis pipeline with OpenAI integration
+- Interactive UI for appraisal, transitivity, and meaning exploration
+- Multiagent event export capability
+- Built with Vite + React + TypeScript + shadcn/ui stack
+
+This repository demonstrates applied computational linguistics suitable for professional NLP portfolio review.
+
+## Future Enhancements
+
+- Direct review scraping from concert platforms
+- Batch analysis across multiple reviews
+- Comparative analysis across artists/venues
+- Enhanced visualizations for meaning networks
+- Python backend integration for heavier SFL processing
