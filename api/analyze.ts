@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
-import { getDomainSchema } from '../src/lib/domainRegistry';
-import { buildSystemPrompt } from '../src/lib/prompt';
+import { getDomainSchema } from '../src/lib/domainRegistry.js';
+import { buildSystemPrompt } from '../src/lib/prompt.js';
 
 const hits = new Map<string, number[]>();
 const WINDOW_MS = 60_000;
@@ -10,6 +10,8 @@ const MAX_CHARS = 3000;
 // Server-side proxy: the OpenAI key never reaches the browser.
 // Rate limiting here is per server instance and best-effort; the real
 // protections are DEMO_TOKEN and a spend cap on the OpenAI key.
+// Relative imports carry explicit .js extensions: package.json sets
+// "type": "module", so Node ESM cannot resolve extensionless specifiers.
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
 
