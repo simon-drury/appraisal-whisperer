@@ -1,53 +1,109 @@
-import { SFLVector } from '@/types/sfl';
+// Hugging Face Manifold Client for primus-orbis-sfl-manifold-v001
+// Wraps the Gradio /run/predict endpoint with the { data: [...] } payload structure.
+// Missing dimensions resolve to null, never to a default value.
 
-const DIMS = ['ideational', 'field', 'interpersonal', 'tenor', 'textual', 'mode'] as const;
-
-export interface HFManifoldResult {
-  vector: SFLVector;
-  dominant_dimension: string | null;
+export interface HFManifoldVector {
+  ideational: number | null;
+  field: number | null;
+  interpersonal: number | null;
+  tenor: number | null;
+  textual: number | null;
+  mode: number | null;
 }
 
-function extractVector(src: any): SFLVector | null {
-  if (!src || typeof src !== 'object') return null;
-  const out: any = {};
-  for (const d of DIMS) {
-    const v = src[d];
-    if (typeof v !== 'number' || !Number.isFinite(v)) return null;
-    out[d] = v;
-  }
-  return out as SFLVector;
+interface GradioResponse {
+  data: any[];
 }
 
-// Gradio contract: request { data: [text] }, response { data: [output, ...] }.
-// The Space must return a JSON object (or JSON string) with the six dimension keys,
-// either at top level or under `vector`. Anything else throws; no values are invented.
+export interface HFManifoldPayload {
+  vector?: Partial<HFManifoldVector>;
+  dominant_dimension?: string;
+  raw_matrix?: number[][];
+  clusters?: any;
+  text?: string;
+  [key: string]: any;
+}
+
+export interface HFManifoldResponse {
+  vector: HFManifoldVector;
+  dominant_dimension?: string;
+  raw_matrix?: number[][];
+  clusters?: any;
+  text?: string;
+}
+
+const num = (v: unknown): number | null => (typeof v === 'number' && isFinite(v) ? v : null);
+
 export class HFManifoldClient {
-  constructor(private endpoint: string, private token: string | null = null) {}
+  private endpoint: string;
+  private apiKey: string | null;
 
-  async analyze(text: string): Promise<HFManifoldResult> {
-    const res = await fetch(this.endpoint, {
+  constructor(endpoint: string, apiKey?: string | null) {
+    this.endpoint = endpoint;
+    this.apiKey = apiKey ?? null;
+  }
+
+  async analyze(text: string): Promise<HFManifoldResponse> {
+    const response = await fetch(this.endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}),
+        ...(this.apiKey ? { Authorization: `Bearer ${this.apiKey}` } : {}),
       },
       body: JSON.stringify({ data: [text] }),
     });
-    if (!res.ok) throw new Error(`HF manifold error: ${res.status} ${res.statusText}`);
 
-    const body = await res.json();
-    let raw = body?.data?.[0];
-    if (typeof raw === 'string') {
-      try { raw = JSON.parse(raw); } catch { throw new Error('HF manifold returned non-JSON text; the Space must return the six-dimension vector as JSON'); }
+    if (!response.ok) {
+      throw new Error(`HF Manifold endpoint error: ${response.status} ${response.statusText}`);
     }
-    const vector = extractVector(raw?.vector) ?? extractVector(raw);
-    if (!vector) throw new Error('HF manifold response is missing one or more of the six dimensions');
-    return { vector, dominant_dimension: typeof raw?.dominant_dimension === 'string' ? raw.dominant_dimension : null };
+
+    const gradioResponse: GradioResponse = await response.json();
+    const raw = gradioResponse.data?.[0];
+
+    let payload: HFManifoldPayload;
+    if (typeof raw === 'string') {
+      try {
+        payload = JSON.parse(raw);
+      } catch {
+        payload = { text: raw };
+      }
+    } else if (raw && typeof raw === 'object') {
+      payload = raw as HFManifoldPayload;
+    } else {
+      payload = {};
+    }
+
+    const vector: HFManifoldVector = {
+      ideational: num(payload.vector?.ideational ?? payload.ideational),
+      field: num(payload.vector?.field ?? payload.field),
+      interpersonal: num(payload.vector?.interpersonal ?? payload.interpersonal),
+      tenor: num(payload.vector?.tenor ?? payload.tenor),
+      textual: num(payload.vector?.textual ?? payload.textual),
+      mode: num(payload.vector?.mode ?? payload.mode),
+    };
+
+    return {
+      vector,
+      dominant_dimension: payload.dominant_dimension,
+      raw_matrix: payload.raw_matrix,
+      clusters: payload.clusters,
+      text: payload.text,
+    };
+  }
+
+  toSFLVector(response: HFManifoldResponse): HFManifoldVector {
+    return {
+      ideational: response.vector.ideational,
+      field: response.vector.field,
+      interpersonal: response.vector.interpersonal,
+      tenor: response.vector.tenor,
+      textual: response.vector.textual,
+      mode: response.vector.mode,
+    };
   }
 }
 
-// 'simondrury/sfl-manifold-demo' -> https://simondrury-sfl-manifold-demo.hf.space/run/predict
-export function createHFManifoldClient(spaceId: string, token: string | null = null): HFManifoldClient {
-  const sub = spaceId.replace('/', '-').replace(/_/g, '-').toLowerCase();
-  return new HFManifoldClient(`https://${sub}.hf.space/run/predict`, token);
+export function createHFManifoldClient(spaceId: string, hfToken?: string | null): HFManifoldClient {
+  const sub = spaceId.toLowerCase().replace(/[/_]/g, '-');
+  return new HFManifoldClient(`https://${sub}.hf.space/run/predict`, hfToken);
 }

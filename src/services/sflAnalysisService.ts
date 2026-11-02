@@ -1,157 +1,256 @@
-import {
-  SFLAnalysis, SFLVector, AppraisalAnalysis, MultiagentEvent, DomainSchema, AnalysisMetadata,
-} from '@/types/sfl';
+import { SFLAnalysis, SFLVector, AppraisalAnalysis, MultiagentEvent, DomainSchema, AnalysisMetadata } from '@/types/sfl';
 import { getDomainSchema } from '@/lib/domainRegistry';
-import { HFManifoldClient, createHFManifoldClient } from '@/lib/hfManifold';
+import { HFManifoldClient, HFManifoldVector } from '@/lib/hfManifold';
 
-const nullVector = (): SFLVector => ({
-  ideational: null, field: null, interpersonal: null, tenor: null, textual: null, mode: null,
-});
+const NULL_VECTOR: SFLVector = {
+  ideational: null,
+  field: null,
+  interpersonal: null,
+  tenor: null,
+  textual: null,
+  mode: null,
+};
 
-const nullAppraisal = (): AppraisalAnalysis => ({
+const NULL_APPRAISAL: AppraisalAnalysis = {
   attitude: { affect: null, judgement: null, appreciation: null },
   engagement: { monogloss: null, heterogloss: null },
   graduation: { force: null, focus: null },
   raw_appraisal_tokens: [],
-});
+};
 
-function num(v: unknown): number | null {
-  return typeof v === 'number' && Number.isFinite(v) ? v : null;
+function buildVectorFromLLM(llmVector: Record<string, number | null> | null): SFLVector {
+  if (!llmVector) return NULL_VECTOR;
+  return {
+    ideational: llmVector.ideational ?? null,
+    field: llmVector.field ?? null,
+    interpersonal: llmVector.interpersonal ?? null,
+    tenor: llmVector.tenor ?? null,
+    textual: llmVector.textual ?? null,
+    mode: llmVector.mode ?? null,
+  };
 }
 
-function vectorFromLLM(v: any): SFLVector {
+function buildVectorFromHF(hfVector: HFManifoldVector | null): SFLVector {
+  if (!hfVector) return NULL_VECTOR;
   return {
-    ideational: num(v?.ideational), field: num(v?.field), interpersonal: num(v?.interpersonal),
-    tenor: num(v?.tenor), textual: num(v?.textual), mode: num(v?.mode),
+    ideational: hfVector.ideational,
+    field: hfVector.field,
+    interpersonal: hfVector.interpersonal,
+    tenor: hfVector.tenor,
+    textual: hfVector.textual,
+    mode: hfVector.mode,
   };
 }
 
 export class SFLAnalysisService {
-  private static openaiKey: string | null = null;
-  private static backend: 'openai' | 'huggingface' = 'openai';
+  private static apiKey: string | null = null;
+  private static backend: 'openai' | 'huggingface' | 'hybrid' = 'openai';
+  private static hfEndpoint: string | null = null;
   private static hfClient: HFManifoldClient | null = null;
 
-  static setApiKey(key: string) { this.openaiKey = key; }
-  static setBackend(backend: 'openai' | 'huggingface') { this.backend = backend; }
-  static setHfEndpoint(endpoint: string, hfToken: string | null = null) {
-    this.hfClient = new HFManifoldClient(endpoint, hfToken);
-  }
-  static setHfSpace(spaceId: string, hfToken: string | null = null) {
-    this.hfClient = createHFManifoldClient(spaceId, hfToken);
+  static setApiKey(key: string) { this.apiKey = key; }
+  static setBackend(backend: 'openai' | 'huggingface' | 'hybrid') { this.backend = backend; }
+
+  static setHfEndpoint(endpoint: string, hfToken?: string | null) {
+    this.hfEndpoint = endpoint;
+    this.hfClient = new HFManifoldClient(endpoint, hfToken ?? null);
   }
 
-  static async analyze(text: string, domain: string, metadata: Partial<AnalysisMetadata> = {}): Promise<SFLAnalysis> {
+  static setHfSpace(spaceId: string, hfToken?: string | null) {
+    const sub = spaceId.toLowerCase().replace(/[/_]/g, '-');
+    this.setHfEndpoint(`https://${sub}.hf.space/run/predict`, hfToken);
+  }
+
+  static async analyze(
+    text: string,
+    domain: string,
+    metadata: Partial<AnalysisMetadata>
+  ): Promise<SFLAnalysis> {
     const schema = getDomainSchema(domain);
     const timestamp = new Date().toISOString();
-    const base: SFLAnalysis = {
+
+    const analysis: SFLAnalysis = {
       id: crypto.randomUUID(),
       timestamp,
       text,
       metadata: {
-        source_type: metadata.source_type ?? 'unknown',
-        source_id: metadata.source_id ?? '',
+        source_type: metadata.source_type || 'unknown',
+        source_id: metadata.source_id || '',
         domain,
         timestamp,
         text_length: text.length,
         language: metadata.language,
-      },
-      vector: nullVector(),
-      appraisal: nullAppraisal(),
+      } as AnalysisMetadata,
+      vector: NULL_VECTOR,
+      appraisal: NULL_APPRAISAL,
       transitivity: { processes: [], participants: [], circumstances: [] },
       meaning_map: {
-        experiential: null, interpersonal: null, textual: null,
-        semiotic_torque: null, dominant_concept: null, derived_meanings: [],
+        experiential: null,
+        interpersonal: null,
+        textual: null,
+        semiotic_torque: null,
+        dominant_concept: null,
+        derived_meanings: [],
       },
       backend: 'pending',
     };
 
-    if (this.backend === 'openai') {
-      if (!this.openaiKey) throw new Error('OpenAI API key not set');
-      return this.enrichWithOpenAI(base, schema);
+    if (this.backend === 'openai' || this.backend === 'hybrid') {
+      if (!this.apiKey) {
+        throw new Error('OpenAI API key not set');
+      }
+      return this.enrichWithOpenAI(analysis, schema);
     }
-    if (!this.hfClient) throw new Error('Hugging Face manifold not configured: call setHfSpace or setHfEndpoint');
-    return this.enrichWithHF(base);
+
+    if (this.backend === 'huggingface') {
+      if (!this.hfClient) {
+        throw new Error('Hugging Face manifold client not configured. Call setHfEndpoint or setHfSpace first.');
+      }
+      return this.enrichWithHF(analysis);
+    }
+
+    return analysis;
   }
 
-  private static async enrichWithOpenAI(a: SFLAnalysis, schema: DomainSchema): Promise<SFLAnalysis> {
-    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+  private static async enrichWithOpenAI(analysis: SFLAnalysis, schema: DomainSchema): Promise<SFLAnalysis> {
+    const systemPrompt = this.buildSystemPrompt(schema);
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.openaiKey}` },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${this.apiKey}`,
+      },
       body: JSON.stringify({
         model: 'gpt-4',
         messages: [
-          { role: 'system', content: this.buildSystemPrompt(schema) },
-          { role: 'user', content: `Analyze this text:\n\n${a.text}` },
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: `Analyze this text:\n\n${analysis.text}` },
         ],
         temperature: 0.3,
         response_format: { type: 'json_object' },
       }),
     });
-    if (!res.ok) throw new Error(`OpenAI error: ${res.status} ${res.statusText}`);
-    const data = await res.json();
-    const out = JSON.parse(data.choices[0].message.content);
-    const mm = out.meaning_map ?? {};
+
+    const data = await response.json();
+    const llmOutput = JSON.parse(data.choices[0].message.content);
+
     return {
-      ...a,
-      appraisal: out.appraisal ?? a.appraisal,
+      ...analysis,
+      appraisal: llmOutput.appraisal || NULL_APPRAISAL,
       transitivity: {
-        processes: out.transitivity?.processes ?? [],
-        participants: out.transitivity?.participants ?? [],
-        circumstances: out.transitivity?.circumstances ?? [],
+        processes: llmOutput.transitivity?.processes || [],
+        participants: llmOutput.transitivity?.participants || [],
+        circumstances: llmOutput.transitivity?.circumstances || [],
       },
-      meaning_map: {
-        experiential: num(mm.experiential), interpersonal: num(mm.interpersonal), textual: num(mm.textual),
-        semiotic_torque: num(mm.semiotic_torque),
-        dominant_concept: typeof mm.dominant_concept === 'string' ? mm.dominant_concept : null,
-        derived_meanings: Array.isArray(mm.derived_meanings) ? mm.derived_meanings : [],
+      meaning_map: llmOutput.meaning_map || {
+        experiential: null,
+        interpersonal: null,
+        textual: null,
+        semiotic_torque: null,
+        dominant_concept: schema.defaultConcept,
+        derived_meanings: [],
       },
-      vector: vectorFromLLM(out.vector),
+      vector: buildVectorFromLLM(llmOutput.vector),
       backend: 'openai',
     };
   }
 
-  private static async enrichWithHF(a: SFLAnalysis): Promise<SFLAnalysis> {
-    const r = await this.hfClient!.analyze(a.text);
+  private static async enrichWithHF(analysis: SFLAnalysis): Promise<SFLAnalysis> {
+    if (!this.hfClient) {
+      throw new Error('Hugging Face manifold client not configured');
+    }
+
+    const hfResponse = await this.hfClient.analyze(analysis.text);
+    const hfVector = this.hfClient.toSFLVector(hfResponse);
+
     return {
-      ...a,
-      vector: r.vector,
-      meaning_map: { ...a.meaning_map, dominant_concept: r.dominant_dimension },
+      ...analysis,
+      vector: buildVectorFromHF(hfVector),
+      meaning_map: {
+        experiential: hfVector.ideational,
+        interpersonal: hfVector.interpersonal,
+        textual: hfVector.textual,
+        semiotic_torque: null,
+        dominant_concept: hfResponse.dominant_dimension ?? null,
+        derived_meanings: [],
+      },
       backend: 'huggingface',
     };
   }
 
   private static buildSystemPrompt(schema: DomainSchema): string {
-    const shape = {
-      appraisal: {
-        attitude: { affect: 0, judgement: 0, appreciation: 0 },
-        engagement: { monogloss: 0, heterogloss: 0 },
-        graduation: { force: 0, focus: 0 },
-        raw_appraisal_tokens: [],
-      },
-      transitivity: {
-        processes: [{ type: '', confidence: 0, trigger: '' }],
-        participants: [{ role: '', entity: '', confidence: 0 }],
-        circumstances: [{ type: '', expression: '' }],
-      },
-      meaning_map: { experiential: 0, interpersonal: 0, textual: 0, semiotic_torque: 0, dominant_concept: '', derived_meanings: [] },
-      vector: { ideational: 0, field: 0, interpersonal: 0, tenor: 0, textual: 0, mode: 0 },
-    };
-    return [
-      'You are an expert Systemic Functional Linguistics analyst applying Halliday Transitivity and Martin & White Appraisal to any text.',
-      'Metafunctions (ideational, interpersonal, textual) and register variables (field, tenor, mode) are distinct strata. They resonate but are never identical or bound. Score all six independently as floats in [0,1], from evidence in the text:',
-      '- ideational: lexicogrammatical representation of experience (Transitivity)',
-      '- field: contextual domain / social activity',
-      '- interpersonal: mood, modality and appraisal stance',
-      '- tenor: institutional power, role distance, solidarity',
-      '- textual: Theme-Rheme architecture, information flow',
-      '- mode: medium, channel, rhetorical orientation',
-      `Domain: ${schema.label}. Participant roles: ${schema.participantRoles.join(', ')}. Process types: ${schema.processTypes.join(', ')}. Circumstances: ${schema.circumstanceTypes.join(', ')}.`,
-      'Do not assume a music or performance domain. Cite the actual words that trigger each process, participant and appraisal item. If a dimension cannot be judged from the text, return null for it.',
-      `Return JSON only, in this shape: ${JSON.stringify(shape)}`,
-    ].join('\n');
+    return `You are an expert Systemic Functional Linguistics (SFL) analyst applying Halliday's Transitivity and Martin & White's Appraisal Framework to any domain of text.
+
+CRITICAL THEORETICAL DISTINCTION:
+  Metafunctions (Ideational, Interpersonal, Textual) and Register Variables (Field, Tenor, Mode)
+  are DISTINCT strata. They resonate but are NEVER identical or bound to each other.
+  You must evaluate ALL SIX dimensions as INDEPENDENT float values between 0 and 1.
+
+THE SIX DIMENSIONS:
+  1. Ideational    — Lexicogrammatical representation of experience (Transitivity)
+  2. Field         — Contextual domain / social activity score
+  3. Interpersonal — Mood, Modality, and Appraisal stance
+  4. Tenor         — Institutional power, role distance, and solidarity score
+  5. Textual       — Theme-Rheme architecture, information flow
+  6. Mode          — Medium, channel, and rhetorical orientation
+
+APPRAISAL (Martin & White):
+  Attitude: Affect (emotion), Judgement (social evaluation of people), Appreciation (evaluation of things)
+  Engagement: Monogloss (single voice) vs Heterogloss (multiple voices, attribution, contraction/expansion)
+  Graduation: Force (intensity) vs Focus (boundary sharpening/softening)
+
+TRANSITIVITY (Halliday):
+  Process types: material, mental, relational, verbal, behavioural, existential
+  Participant roles: ${schema.participantRoles.join(', ')}
+  Circumstances: extent, location, manner, cause, accompaniment, matter, role
+
+DOMAIN SCHEMA: ${schema.label} (${schema.id})
+  Default concept: ${schema.defaultConcept}
+  Participant roles: ${schema.participantRoles.join(', ')}
+  Process types: ${schema.processTypes.join(', ')}
+
+Do NOT assume a music or performance domain. Do NOT couple ideational=field, interpersonal=tenor, or textual=mode.
+Each dimension receives its own independent score based on the text evidence.
+
+Output JSON with this exact structure:
+{
+  "appraisal": {
+    "attitude": {"affect": 0-1, "judgement": 0-1, "appreciation": 0-1},
+    "engagement": {"monogloss": 0-1, "heterogloss": 0-1},
+    "graduation": {"force": 0-1, "focus": 0-1},
+    "raw_appraisal_tokens": ["token1", "token2"]
+  },
+  "transitivity": {
+    "processes": [{"type": "...", "confidence": 0-1, "trigger": "..."}],
+    "participants": [{"role": "...", "entity": "...", "confidence": 0-1}],
+    "circumstances": [{"type": "...", "expression": "..."}]
+  },
+  "meaning_map": {
+    "experiential": 0-1,
+    "interpersonal": 0-1,
+    "textual": 0-1,
+    "semiotic_torque": 0-1,
+    "dominant_concept": "...",
+    "derived_meanings": ["..."]
+  },
+  "vector": {
+    "ideational": 0-1,
+    "field": 0-1,
+    "interpersonal": 0-1,
+    "tenor": 0-1,
+    "textual": 0-1,
+    "mode": 0-1
+  }
+}
+
+All values are floats between 0 and 1. Be precise, domain-agnostic, and grounded in the actual text.`;
   }
 
   static createMultiagentEvent(analysis: SFLAnalysis): MultiagentEvent {
-    return { type: 'SFL_ANALYSIS_COMPLETE', payload: analysis, timestamp: new Date().toISOString() };
+    return {
+      type: 'SFL_ANALYSIS_COMPLETE',
+      payload: analysis,
+      timestamp: new Date().toISOString(),
+    };
   }
 }
