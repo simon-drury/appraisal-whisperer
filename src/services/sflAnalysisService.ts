@@ -1,241 +1,157 @@
-import { SFLAnalysis, AppraisalAnalysis, TransitivityAnalysis, MeaningMap, MultiagentEvent, ProcessType, ParticipantRole } from '@/types/sfl';
+import {
+  SFLAnalysis, SFLVector, AppraisalAnalysis, MultiagentEvent, DomainSchema, AnalysisMetadata,
+} from '@/types/sfl';
+import { getDomainSchema } from '@/lib/domainRegistry';
+import { HFManifoldClient, createHFManifoldClient } from '@/lib/hfManifold';
+
+const nullVector = (): SFLVector => ({
+  ideational: null, field: null, interpersonal: null, tenor: null, textual: null, mode: null,
+});
+
+const nullAppraisal = (): AppraisalAnalysis => ({
+  attitude: { affect: null, judgement: null, appreciation: null },
+  engagement: { monogloss: null, heterogloss: null },
+  graduation: { force: null, focus: null },
+  raw_appraisal_tokens: [],
+});
+
+function num(v: unknown): number | null {
+  return typeof v === 'number' && Number.isFinite(v) ? v : null;
+}
+
+function vectorFromLLM(v: any): SFLVector {
+  return {
+    ideational: num(v?.ideational), field: num(v?.field), interpersonal: num(v?.interpersonal),
+    tenor: num(v?.tenor), textual: num(v?.textual), mode: num(v?.mode),
+  };
+}
 
 export class SFLAnalysisService {
-  private static apiKey: string | null = null;
+  private static openaiKey: string | null = null;
+  private static backend: 'openai' | 'huggingface' = 'openai';
+  private static hfClient: HFManifoldClient | null = null;
 
-  static setApiKey(key: string) {
-    this.apiKey = key;
+  static setApiKey(key: string) { this.openaiKey = key; }
+  static setBackend(backend: 'openai' | 'huggingface') { this.backend = backend; }
+  static setHfEndpoint(endpoint: string, hfToken: string | null = null) {
+    this.hfClient = new HFManifoldClient(endpoint, hfToken);
+  }
+  static setHfSpace(spaceId: string, hfToken: string | null = null) {
+    this.hfClient = createHFManifoldClient(spaceId, hfToken);
   }
 
-  static async analyzeText(
-    text: string, 
-    artist: string, 
-    event: string,
-    requestId: string
-  ): Promise<SFLAnalysis> {
-    if (!this.apiKey) {
-      throw new Error('API key not configured');
-    }
-
-    const analysis: SFLAnalysis = {
-      id: `sfl_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      timestamp: new Date().toISOString(),
+  static async analyze(text: string, domain: string, metadata: Partial<AnalysisMetadata> = {}): Promise<SFLAnalysis> {
+    const schema = getDomainSchema(domain);
+    const timestamp = new Date().toISOString();
+    const base: SFLAnalysis = {
+      id: crypto.randomUUID(),
+      timestamp,
       text,
-      appraisal: await this.performAppraisalAnalysis(text),
-      transitivity: await this.performTransitivityAnalysis(text),
-      meaningMap: await this.generateMeaningMap(text),
       metadata: {
-        source: 'live_review',
-        artist,
-        event,
-        reviewLength: text.length,
-        confidenceScore: 0.85,
-        processingTime: Date.now()
-      }
+        source_type: metadata.source_type ?? 'unknown',
+        source_id: metadata.source_id ?? '',
+        domain,
+        timestamp,
+        text_length: text.length,
+        language: metadata.language,
+      },
+      vector: nullVector(),
+      appraisal: nullAppraisal(),
+      transitivity: { processes: [], participants: [], circumstances: [] },
+      meaning_map: {
+        experiential: null, interpersonal: null, textual: null,
+        semiotic_torque: null, dominant_concept: null, derived_meanings: [],
+      },
+      backend: 'pending',
     };
 
-    return analysis;
-  }
-
-  private static async performAppraisalAnalysis(text: string): Promise<AppraisalAnalysis> {
-    // Simulate Claude/OpenAI API call for appraisal analysis
-    const prompt = `
-    Perform Systemic Functional Linguistics Appraisal analysis on this text.
-    Analyze for:
-    1. ATTITUDE (affect, judgement, appreciation)
-    2. ENGAGEMENT (monogloss vs heterogloss)
-    3. GRADUATION (force and focus)
-    
-    Text: "${text}"
-    
-    Return structured analysis focusing on experiential meaning without sentiment bias.
-    `;
-
-    try {
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'gpt-4',
-          messages: [
-            {
-              role: 'system',
-              content: 'You are an expert in Systemic Functional Linguistics performing appraisal analysis. Focus on meaning structures, not sentiment.'
-            },
-            {
-              role: 'user',
-              content: prompt
-            }
-          ],
-          temperature: 0.3
-        })
-      });
-
-      const data = await response.json();
-      
-      // Parse structured response (simplified for demo)
-      return this.parseAppraisalResponse(data.choices[0].message.content, text);
-    } catch (error) {
-      console.error('Appraisal analysis failed:', error);
-      return this.getFallbackAppraisal(text);
+    if (this.backend === 'openai') {
+      if (!this.openaiKey) throw new Error('OpenAI API key not set');
+      return this.enrichWithOpenAI(base, schema);
     }
+    if (!this.hfClient) throw new Error('Hugging Face manifold not configured: call setHfSpace or setHfEndpoint');
+    return this.enrichWithHF(base);
   }
 
-  private static parseAppraisalResponse(response: string, text: string): AppraisalAnalysis {
-    // Parse AI response into structured appraisal data
-    // This would be more sophisticated in production
-    const words = text.toLowerCase().split(' ');
-    
-    const affectIndicators = words.filter(w => 
-      ['amazing', 'terrible', 'love', 'hate', 'excited', 'disappointed'].includes(w)
-    );
-    
-    const judgementIndicators = words.filter(w => 
-      ['skilled', 'talented', 'awful', 'professional', 'amateur'].includes(w)
-    );
-    
-    const appreciationIndicators = words.filter(w => 
-      ['beautiful', 'ugly', 'brilliant', 'boring', 'incredible'].includes(w)
-    );
-
+  private static async enrichWithOpenAI(a: SFLAnalysis, schema: DomainSchema): Promise<SFLAnalysis> {
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.openaiKey}` },
+      body: JSON.stringify({
+        model: 'gpt-4',
+        messages: [
+          { role: 'system', content: this.buildSystemPrompt(schema) },
+          { role: 'user', content: `Analyze this text:\n\n${a.text}` },
+        ],
+        temperature: 0.3,
+        response_format: { type: 'json_object' },
+      }),
+    });
+    if (!res.ok) throw new Error(`OpenAI error: ${res.status} ${res.statusText}`);
+    const data = await res.json();
+    const out = JSON.parse(data.choices[0].message.content);
+    const mm = out.meaning_map ?? {};
     return {
-      attitude: {
-        affect: {
-          score: Math.min(affectIndicators.length * 0.3, 1),
-          indicators: affectIndicators,
-          strength: affectIndicators.length > 2 ? 'high' : affectIndicators.length > 0 ? 'medium' : 'low'
-        },
-        judgement: {
-          score: Math.min(judgementIndicators.length * 0.25, 1),
-          indicators: judgementIndicators,
-          strength: judgementIndicators.length > 2 ? 'high' : judgementIndicators.length > 0 ? 'medium' : 'low'
-        },
-        appreciation: {
-          score: Math.min(appreciationIndicators.length * 0.35, 1),
-          indicators: appreciationIndicators,
-          strength: appreciationIndicators.length > 2 ? 'high' : appreciationIndicators.length > 0 ? 'medium' : 'low'
-        }
+      ...a,
+      appraisal: out.appraisal ?? a.appraisal,
+      transitivity: {
+        processes: out.transitivity?.processes ?? [],
+        participants: out.transitivity?.participants ?? [],
+        circumstances: out.transitivity?.circumstances ?? [],
       },
-      engagement: {
-        monogloss: 0.6,
-        heterogloss: 0.4
+      meaning_map: {
+        experiential: num(mm.experiential), interpersonal: num(mm.interpersonal), textual: num(mm.textual),
+        semiotic_torque: num(mm.semiotic_torque),
+        dominant_concept: typeof mm.dominant_concept === 'string' ? mm.dominant_concept : null,
+        derived_meanings: Array.isArray(mm.derived_meanings) ? mm.derived_meanings : [],
       },
-      graduation: {
-        force: 0.7,
-        focus: 0.5
+      vector: vectorFromLLM(out.vector),
+      backend: 'openai',
+    };
+  }
+
+  private static async enrichWithHF(a: SFLAnalysis): Promise<SFLAnalysis> {
+    const r = await this.hfClient!.analyze(a.text);
+    return {
+      ...a,
+      vector: r.vector,
+      meaning_map: { ...a.meaning_map, dominant_concept: r.dominant_dimension },
+      backend: 'huggingface',
+    };
+  }
+
+  private static buildSystemPrompt(schema: DomainSchema): string {
+    const shape = {
+      appraisal: {
+        attitude: { affect: 0, judgement: 0, appreciation: 0 },
+        engagement: { monogloss: 0, heterogloss: 0 },
+        graduation: { force: 0, focus: 0 },
+        raw_appraisal_tokens: [],
       },
-      polarity: 'neutral',
-      intensity: 0.6
-    };
-  }
-
-  private static async performTransitivityAnalysis(text: string): Promise<TransitivityAnalysis> {
-    // Simulate transitivity analysis
-    const sentences = text.split(/[.!?]+/).filter(s => s.trim());
-    
-    const processes = sentences.map((sentence, i) => ({
-      type: this.identifyProcessType(sentence),
-      text: sentence.trim(),
-      intensity: Math.random() * 0.5 + 0.5,
-      position: [i * 100, Math.random() * 200] as [number, number]
-    }));
-
-    const participants = sentences.map((sentence, i) => ({
-      role: this.identifyParticipantRole(sentence),
-      text: sentence.split(' ').slice(0, 3).join(' '),
-      agency: Math.random() * 0.5 + 0.5,
-      position: [i * 120 + 50, Math.random() * 180 + 20] as [number, number]
-    }));
-
-    return {
-      processes,
-      participants,
-      circumstances: [],
-      clauseComplexity: sentences.length / text.split(' ').length,
-      dominantProcessType: 'mental'
-    };
-  }
-
-  private static identifyProcessType(sentence: string): ProcessType {
-    const lowerSentence = sentence.toLowerCase();
-    if (lowerSentence.includes('feel') || lowerSentence.includes('think')) return 'mental';
-    if (lowerSentence.includes('play') || lowerSentence.includes('perform')) return 'material';
-    if (lowerSentence.includes('said') || lowerSentence.includes('told')) return 'verbal';
-    if (lowerSentence.includes('is') || lowerSentence.includes('was')) return 'relational';
-    return 'material';
-  }
-
-  private static identifyParticipantRole(sentence: string): ParticipantRole {
-    const lowerSentence = sentence.toLowerCase();
-    if (lowerSentence.includes('artist') || lowerSentence.includes('band')) return 'actor';
-    if (lowerSentence.includes('audience') || lowerSentence.includes('crowd')) return 'senser';
-    return 'actor';
-  }
-
-  private static async generateMeaningMap(text: string): Promise<MeaningMap> {
-    // Generate meaning map with semiotic torque analysis
-    return {
-      experiential: [
-        {
-          concept: 'musical_performance',
-          strength: 0.8,
-          connections: ['artist_skill', 'audience_response'],
-          evidence: ['performance indicators in text']
-        }
-      ],
-      interpersonal: [
-        {
-          stance: 'evaluative',
-          modality: 0.7,
-          engagement: 0.6,
-          evidence: ['modal expressions']
-        }
-      ],
-      textual: [
-        {
-          theme: 'concert_experience',
-          coherence: 0.75,
-          flow: ['intro', 'description', 'evaluation']
-        }
-      ],
-      semioticTorque: [
-        {
-          pivot: 'performance_quality',
-          recursionDepth: 2,
-          pivotStrength: 0.85,
-          derivedMeanings: ['technical_skill', 'emotional_impact']
-        }
-      ]
-    };
-  }
-
-  private static getFallbackAppraisal(text: string): AppraisalAnalysis {
-    return {
-      attitude: {
-        affect: { score: 0.5, indicators: [], strength: 'medium' },
-        judgement: { score: 0.5, indicators: [], strength: 'medium' },
-        appreciation: { score: 0.5, indicators: [], strength: 'medium' }
+      transitivity: {
+        processes: [{ type: '', confidence: 0, trigger: '' }],
+        participants: [{ role: '', entity: '', confidence: 0 }],
+        circumstances: [{ type: '', expression: '' }],
       },
-      engagement: { monogloss: 0.5, heterogloss: 0.5 },
-      graduation: { force: 0.5, focus: 0.5 },
-      polarity: 'neutral',
-      intensity: 0.5
+      meaning_map: { experiential: 0, interpersonal: 0, textual: 0, semiotic_torque: 0, dominant_concept: '', derived_meanings: [] },
+      vector: { ideational: 0, field: 0, interpersonal: 0, tenor: 0, textual: 0, mode: 0 },
     };
+    return [
+      'You are an expert Systemic Functional Linguistics analyst applying Halliday Transitivity and Martin & White Appraisal to any text.',
+      'Metafunctions (ideational, interpersonal, textual) and register variables (field, tenor, mode) are distinct strata. They resonate but are never identical or bound. Score all six independently as floats in [0,1], from evidence in the text:',
+      '- ideational: lexicogrammatical representation of experience (Transitivity)',
+      '- field: contextual domain / social activity',
+      '- interpersonal: mood, modality and appraisal stance',
+      '- tenor: institutional power, role distance, solidarity',
+      '- textual: Theme-Rheme architecture, information flow',
+      '- mode: medium, channel, rhetorical orientation',
+      `Domain: ${schema.label}. Participant roles: ${schema.participantRoles.join(', ')}. Process types: ${schema.processTypes.join(', ')}. Circumstances: ${schema.circumstanceTypes.join(', ')}.`,
+      'Do not assume a music or performance domain. Cite the actual words that trigger each process, participant and appraisal item. If a dimension cannot be judged from the text, return null for it.',
+      `Return JSON only, in this shape: ${JSON.stringify(shape)}`,
+    ].join('\n');
   }
 
-  static generateMultiagentEvent(analysis: SFLAnalysis, requestId: string): MultiagentEvent {
-    return {
-      eventType: 'SFL_ANALYSIS_COMPLETE',
-      agentId: 'AppraisalMapperAgent',
-      timestamp: new Date().toISOString(),
-      data: analysis,
-      metadata: {
-        conversationId: `conv_${Date.now()}`,
-        requestId
-      }
-    };
+  static createMultiagentEvent(analysis: SFLAnalysis): MultiagentEvent {
+    return { type: 'SFL_ANALYSIS_COMPLETE', payload: analysis, timestamp: new Date().toISOString() };
   }
 }
