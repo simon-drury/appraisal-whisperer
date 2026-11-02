@@ -12,23 +12,23 @@ export interface HFManifoldVector {
 }
 
 interface GradioResponse {
-  data: any[];
+  data: unknown[];
 }
 
 export interface HFManifoldPayload {
   vector?: Partial<HFManifoldVector>;
   dominant_dimension?: string;
   raw_matrix?: number[][];
-  clusters?: any;
+  clusters?: unknown;
   text?: string;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface HFManifoldResponse {
   vector: HFManifoldVector;
   dominant_dimension?: string;
   raw_matrix?: number[][];
-  clusters?: any;
+  clusters?: unknown;
   text?: string;
 }
 

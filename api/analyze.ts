@@ -7,12 +7,23 @@ const WINDOW_MS = 60_000;
 const MAX_HITS = Number(process.env.RATE_LIMIT_PER_MIN) || 6;
 const MAX_CHARS = 3000;
 
+type ApiRequest = {
+  method: string;
+  headers: Record<string, unknown>;
+  body?: Record<string, unknown> | null;
+};
+
+type ApiResponse = {
+  status(code: number): ApiResponse;
+  json(body: unknown): ApiResponse;
+};
+
 // Server-side proxy: the OpenAI key never reaches the browser.
 // Rate limiting here is per server instance and best-effort; the real
 // protections are DEMO_TOKEN and a spend cap on the OpenAI key.
 // Relative imports carry explicit .js extensions: package.json sets
 // "type": "module", so Node ESM cannot resolve extensionless specifiers.
-export default async function handler(req: any, res: any) {
+export default async function handler(req: ApiRequest, res: ApiResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
 
   const key = process.env.OPENAI_API_KEY;
