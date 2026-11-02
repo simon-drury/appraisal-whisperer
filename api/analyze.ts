@@ -4,7 +4,7 @@ import { buildSystemPrompt } from '../src/lib/prompt.js';
 
 const hits = new Map<string, number[]>();
 const WINDOW_MS = 60_000;
-const MAX_HITS = 6;
+const MAX_HITS = Number(process.env.RATE_LIMIT_PER_MIN) || 6;
 const MAX_CHARS = 3000;
 
 // Server-side proxy: the OpenAI key never reaches the browser.

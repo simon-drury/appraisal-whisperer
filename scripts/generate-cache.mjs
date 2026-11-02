@@ -1,6 +1,13 @@
 // Usage: DEMO_TOKEN=... node scripts/generate-cache.mjs <base-url> [runs]
+// Optional: PAUSE_MS (default 11000) sets the pause between calls.
 // Runs each review through the deployed /api/analyze proxy several times and
 // writes the real outputs, with provenance, to src/data/cachedReviews.ts.
+//
+// Rate-limit arithmetic: the proxy allows RATE_LIMIT_PER_MIN (default 6) calls
+// in any sliding 60 s window. With a pause p seconds between calls, a window
+// holds at most floor(60 / p) + 1 calls. p = 11 gives floor(5.45) + 1 = 6,
+// but the 7th call lands at t = 66 s, when the call at t = 0 has aged out,
+// so no window ever exceeds 5 retained hits at the moment of a new call.
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 
 const [base, runsArg] = process.argv.slice(2);
@@ -11,20 +18,40 @@ if (!base || !token) {
 }
 
 const runs = Number(runsArg ?? 3);
+const pauseMs = Number(process.env.PAUSE_MS ?? 11000);
 const reviews = JSON.parse(readFileSync('scripts/reviews.input.json', 'utf8'));
 const DIMS = ['ideational', 'field', 'interpersonal', 'tenor', 'textual', 'mode'];
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const out = [];
-for (const r of reviews) {
-  const results = [];
-  for (let i = 0; i < runs; i++) {
+async function callProxy(review, label) {
+  for (let attempt = 1; attempt <= 3; attempt++) {
     const res = await fetch(`${base}/api/analyze`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-demo-token': token },
-      body: JSON.stringify({ text: r.text, domain: 'product_review' }),
+      body: JSON.stringify({ text: review.text, domain: 'product_review' }),
     });
-    if (!res.ok) throw new Error(`${r.id} run ${i + 1}: HTTP ${res.status}`);
-    results.push(await res.json());
+    if (res.status === 429) {
+      console.warn(`${label}: HTTP 429, waiting 20 s (attempt ${attempt}/3)`);
+      await sleep(20000);
+      continue;
+    }
+    if (!res.ok) throw new Error(`${label}: HTTP ${res.status}`);
+    return res.json();
+  }
+  throw new Error(`${label}: still rate limited after 3 attempts`);
+}
+
+const total = reviews.length * runs;
+let done = 0;
+const out = [];
+
+for (const r of reviews) {
+  const results = [];
+  for (let i = 0; i < runs; i++) {
+    results.push(await callProxy(r, `${r.id} run ${i + 1}`));
+    done++;
+    console.log(`${done}/${total} done`);
+    if (done < total) await sleep(pauseMs);
   }
 
   const stat = (get) => {
