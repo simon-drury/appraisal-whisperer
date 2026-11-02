@@ -89,7 +89,7 @@ export interface SFLAnalysis {
   appraisal: AppraisalAnalysis;
   transitivity: TransitivityAnalysis;
   meaning_map: MeaningMap;
-  backend: 'openai' | 'huggingface' | 'hybrid' | 'pending';
+  backend: 'proxy' | 'huggingface' | 'pending';
 }
 
 export interface MultiagentEvent {

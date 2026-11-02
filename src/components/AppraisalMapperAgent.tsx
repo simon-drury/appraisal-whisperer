@@ -33,8 +33,8 @@ const Meter = ({ name, v }: { name: string; v: number | null }) => (
 
 export const AppraisalMapperAgent: React.FC<Props> = ({ onAnalysisComplete }) => {
   const { toast } = useToast();
-  const [apiKey, setApiKey] = useState('');
-  const [backend, setBackend] = useState<'openai' | 'huggingface'>('openai');
+  const [accessCode, setAccessCode] = useState('');
+  const [backend, setBackend] = useState<'proxy' | 'huggingface'>('proxy');
   const [hfSpace, setHfSpace] = useState('simondrury/sfl-manifold-demo');
   const [hfToken, setHfToken] = useState('');
   const [domain, setDomain] = useState('product_review');
@@ -47,10 +47,10 @@ export const AppraisalMapperAgent: React.FC<Props> = ({ onAnalysisComplete }) =>
   const [analysis, setAnalysis] = useState<SFLAnalysis | null>(null);
 
   const configure = () => {
-    if (backend === 'openai') {
-      if (!apiKey.trim()) throw new Error('Enter your OpenAI API key');
-      SFLAnalysisService.setApiKey(apiKey);
-      SFLAnalysisService.setBackend('openai');
+    if (backend === 'proxy') {
+      if (!accessCode.trim()) throw new Error('Enter the access code');
+      SFLAnalysisService.setProxy(accessCode);
+      SFLAnalysisService.setBackend('proxy');
     } else {
       SFLAnalysisService.setHfSpace(hfSpace, hfToken || null);
       SFLAnalysisService.setBackend('huggingface');
@@ -76,7 +76,8 @@ export const AppraisalMapperAgent: React.FC<Props> = ({ onAnalysisComplete }) =>
     } catch (e) {
       toast({ title: 'Analysis Failed', description: e instanceof Error ? e.message : 'Unknown error', variant: 'destructive' });
     } finally { setBusy(false); }
-  }, [apiKey, backend, hfSpace, hfToken, domain, sourceType, sourceId, onAnalysisComplete, toast]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accessCode, backend, hfSpace, hfToken, domain, sourceType, sourceId, onAnalysisComplete, toast]);
 
   return (
     <div className="w-full max-w-6xl mx-auto p-6 space-y-6">
@@ -97,16 +98,16 @@ export const AppraisalMapperAgent: React.FC<Props> = ({ onAnalysisComplete }) =>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="space-y-2">
               <label className="text-sm font-medium">Backend</label>
-              <select value={backend} onChange={(e) => setBackend(e.target.value as 'openai' | 'huggingface')}
+              <select value={backend} onChange={(e) => setBackend(e.target.value as 'proxy' | 'huggingface')}
                 className="w-full rounded-md border border-border/50 bg-background/50 p-2 text-sm">
-                <option value="openai">OpenAI GPT-4</option>
+                <option value="proxy">Live analysis (server-side)</option>
                 <option value="huggingface">Hugging Face manifold (experimental)</option>
               </select>
             </div>
-            {backend === 'openai' ? (
+            {backend === 'proxy' ? (
               <div className="space-y-2 md:col-span-2">
-                <label className="text-sm font-medium">OpenAI API Key</label>
-                <Input type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="sk-..." />
+                <label className="text-sm font-medium">Access code</label>
+                <Input type="password" value={accessCode} onChange={(e) => setAccessCode(e.target.value)} placeholder="Demo access code" />
               </div>
             ) : (
               <>

@@ -1,4 +1,4 @@
-import { DomainSchema } from '@/types/sfl';
+import type { DomainSchema } from '../types/sfl';
 
 export const DOMAIN_SCHEMAS: Record<string, DomainSchema> = {
   product_review: {
