@@ -2,17 +2,14 @@ import { createHash } from 'node:crypto';
 import { getDomainSchema } from '../src/lib/domainRegistry';
 import { buildSystemPrompt } from '../src/lib/prompt';
 
-// Server-side proxy: the OpenAI key never reaches the browser.
-// Required env vars: OPENAI_API_KEY, DEMO_TOKEN. Optional: OPENAI_MODEL.
-// The rate limit is per server instance and best-effort; the real protection
-// is DEMO_TOKEN plus a spend cap set on the OpenAI key itself.
-
 const hits = new Map<string, number[]>();
 const WINDOW_MS = 60_000;
 const MAX_HITS = 6;
 const MAX_CHARS = 3000;
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// Server-side proxy: the OpenAI key never reaches the browser.
+// Rate limiting here is per server instance and best-effort; the real
+// protections are DEMO_TOKEN and a spend cap on the OpenAI key.
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
 
@@ -24,19 +21,19 @@ export default async function handler(req: any, res: any) {
   const ip = String(req.headers['x-forwarded-for'] ?? 'unknown').split(',')[0].trim();
   const now = Date.now();
   const recent = (hits.get(ip) ?? []).filter((t) => now - t < WINDOW_MS);
-  if (recent.length >= MAX_HITS) return res.status(429).json({ error: 'Rate limit reached, try again shortly' });
+  if (recent.length >= MAX_HITS) return res.status(429).json({ error: 'Rate limit' });
   hits.set(ip, [...recent, now]);
 
   const { text, domain } = req.body ?? {};
   if (typeof text !== 'string' || !text.trim() || text.length > MAX_CHARS) {
-    return res.status(400).json({ error: `text required, max ${MAX_CHARS} characters` });
+    return res.status(400).json({ error: `text required, max ${MAX_CHARS} chars` });
   }
 
   const schema = getDomainSchema(typeof domain === 'string' ? domain : 'product_review');
   const system = buildSystemPrompt(schema);
   const model = process.env.OPENAI_MODEL ?? 'gpt-4o';
 
-  const upstream = await fetch('https://api.openai.com/v1/chat/completions', {
+  const r = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
     body: JSON.stringify({
@@ -49,9 +46,9 @@ export default async function handler(req: any, res: any) {
       ],
     }),
   });
-  if (!upstream.ok) return res.status(502).json({ error: `Upstream error ${upstream.status}` });
+  if (!r.ok) return res.status(502).json({ error: `Upstream ${r.status}` });
 
-  const data = await upstream.json();
+  const data = await r.json();
   let llm;
   try {
     llm = JSON.parse(data.choices[0].message.content);

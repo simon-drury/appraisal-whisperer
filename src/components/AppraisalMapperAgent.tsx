@@ -18,6 +18,7 @@ interface Props {
   agentMode?: 'standalone' | 'orchestrated';
 }
 
+type Backend = 'proxy' | 'huggingface';
 type Row = { id: string; label: string; stars: number | null; analysis: SFLAnalysis };
 
 const pct = (v: number | null) => (v === null ? '—' : `${(v * 100).toFixed(1)}%`);
@@ -33,8 +34,8 @@ const Meter = ({ name, v }: { name: string; v: number | null }) => (
 
 export const AppraisalMapperAgent: React.FC<Props> = ({ onAnalysisComplete }) => {
   const { toast } = useToast();
-  const [accessCode, setAccessCode] = useState('');
-  const [backend, setBackend] = useState<'proxy' | 'huggingface'>('proxy');
+  const [demoToken, setDemoToken] = useState('');
+  const [backend, setBackend] = useState<Backend>('proxy');
   const [hfSpace, setHfSpace] = useState('simondrury/sfl-manifold-demo');
   const [hfToken, setHfToken] = useState('');
   const [domain, setDomain] = useState('product_review');
@@ -48,8 +49,8 @@ export const AppraisalMapperAgent: React.FC<Props> = ({ onAnalysisComplete }) =>
 
   const configure = () => {
     if (backend === 'proxy') {
-      if (!accessCode.trim()) throw new Error('Enter the access code');
-      SFLAnalysisService.setProxy(accessCode);
+      if (!demoToken.trim()) throw new Error('Enter the access code');
+      SFLAnalysisService.setProxy(demoToken.trim());
       SFLAnalysisService.setBackend('proxy');
     } else {
       SFLAnalysisService.setHfSpace(hfSpace, hfToken || null);
@@ -76,8 +77,7 @@ export const AppraisalMapperAgent: React.FC<Props> = ({ onAnalysisComplete }) =>
     } catch (e) {
       toast({ title: 'Analysis Failed', description: e instanceof Error ? e.message : 'Unknown error', variant: 'destructive' });
     } finally { setBusy(false); }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accessCode, backend, hfSpace, hfToken, domain, sourceType, sourceId, onAnalysisComplete, toast]);
+  }, [demoToken, backend, hfSpace, hfToken, domain, sourceType, sourceId, onAnalysisComplete, toast]);
 
   return (
     <div className="w-full max-w-6xl mx-auto p-6 space-y-6">
@@ -98,16 +98,16 @@ export const AppraisalMapperAgent: React.FC<Props> = ({ onAnalysisComplete }) =>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="space-y-2">
               <label className="text-sm font-medium">Backend</label>
-              <select value={backend} onChange={(e) => setBackend(e.target.value as 'proxy' | 'huggingface')}
+              <select value={backend} onChange={(e) => setBackend(e.target.value as Backend)}
                 className="w-full rounded-md border border-border/50 bg-background/50 p-2 text-sm">
-                <option value="proxy">Live analysis (server-side)</option>
+                <option value="proxy">Live analysis (secured server)</option>
                 <option value="huggingface">Hugging Face manifold (experimental)</option>
               </select>
             </div>
             {backend === 'proxy' ? (
               <div className="space-y-2 md:col-span-2">
                 <label className="text-sm font-medium">Access code</label>
-                <Input type="password" value={accessCode} onChange={(e) => setAccessCode(e.target.value)} placeholder="Demo access code" />
+                <Input type="password" value={demoToken} onChange={(e) => setDemoToken(e.target.value)} placeholder="Access code" />
               </div>
             ) : (
               <>

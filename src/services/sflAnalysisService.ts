@@ -1,19 +1,5 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-import type {
-  SFLAnalysis,
-  SFLVector,
-  AppraisalAnalysis,
-  TransitivityAnalysis,
-  MeaningMap,
-  MultiagentEvent,
-  AnalysisMetadata,
-} from '@/types/sfl';
-import { getDomainSchema } from '@/lib/domainRegistry';
-import { HFManifoldClient, type HFManifoldVector } from '@/lib/hfManifold';
-
-// A value is accepted only if it is a number between 0 and 1; anything else becomes null.
-const n01 = (v: unknown): number | null => (typeof v === 'number' && v >= 0 && v <= 1 ? v : null);
-const str = (v: unknown): string => (typeof v === 'string' ? v : '');
+import { SFLAnalysis, SFLVector, AppraisalAnalysis, MultiagentEvent, AnalysisMetadata } from '@/types/sfl';
+import { HFManifoldClient, HFManifoldVector } from '@/lib/hfManifold';
 
 const NULL_VECTOR: SFLVector = {
   ideational: null,
@@ -31,17 +17,31 @@ const NULL_APPRAISAL: AppraisalAnalysis = {
   raw_appraisal_tokens: [],
 };
 
-const NULL_MEANING: MeaningMap = {
-  experiential: null,
-  interpersonal: null,
-  textual: null,
-  semiotic_torque: null,
-  dominant_concept: null,
-  derived_meanings: [],
-};
+// Any value outside 0-1 (or non-numeric) becomes null, never a default.
+const n01 = (v: unknown): number | null =>
+  typeof v === 'number' && v >= 0 && v <= 1 ? v : null;
 
-function buildVectorFromLLM(v: any): SFLVector {
-  if (!v || typeof v !== 'object') return NULL_VECTOR;
+const strings = (v: unknown): string[] =>
+  Array.isArray(v) ? v.filter((t): t is string => typeof t === 'string') : [];
+
+interface LLMOutput {
+  appraisal?: {
+    attitude?: Record<string, unknown>;
+    engagement?: Record<string, unknown>;
+    graduation?: Record<string, unknown>;
+    raw_appraisal_tokens?: unknown;
+  };
+  transitivity?: {
+    processes?: Array<{ type?: unknown; confidence?: unknown; trigger?: unknown }>;
+    participants?: Array<{ role?: unknown; entity?: unknown; confidence?: unknown }>;
+    circumstances?: Array<{ type?: unknown; expression?: unknown }>;
+  };
+  meaning_map?: Record<string, unknown>;
+  vector?: Record<string, unknown>;
+}
+
+function buildVectorFromLLM(v: Record<string, unknown> | null | undefined): SFLVector {
+  if (!v) return { ...NULL_VECTOR };
   return {
     ideational: n01(v.ideational),
     field: n01(v.field),
@@ -52,70 +52,62 @@ function buildVectorFromLLM(v: any): SFLVector {
   };
 }
 
-function buildVectorFromHF(hf: HFManifoldVector): SFLVector {
+function buildVectorFromHF(hfVector: HFManifoldVector | null): SFLVector {
+  if (!hfVector) return { ...NULL_VECTOR };
   return {
-    ideational: n01(hf.ideational),
-    field: n01(hf.field),
-    interpersonal: n01(hf.interpersonal),
-    tenor: n01(hf.tenor),
-    textual: n01(hf.textual),
-    mode: n01(hf.mode),
+    ideational: hfVector.ideational,
+    field: hfVector.field,
+    interpersonal: hfVector.interpersonal,
+    tenor: hfVector.tenor,
+    textual: hfVector.textual,
+    mode: hfVector.mode,
   };
 }
 
-function sanitizeAppraisal(a: any): AppraisalAnalysis {
-  if (!a || typeof a !== 'object') return NULL_APPRAISAL;
-  return {
-    attitude: {
-      affect: n01(a.attitude?.affect),
-      judgement: n01(a.attitude?.judgement),
-      appreciation: n01(a.attitude?.appreciation),
-    },
-    engagement: {
-      monogloss: n01(a.engagement?.monogloss),
-      heterogloss: n01(a.engagement?.heterogloss),
-    },
-    graduation: {
-      force: n01(a.graduation?.force),
-      focus: n01(a.graduation?.focus),
-    },
-    raw_appraisal_tokens: Array.isArray(a.raw_appraisal_tokens)
-      ? a.raw_appraisal_tokens.filter((t: unknown) => typeof t === 'string')
-      : [],
-  };
-}
+function applyLLM(analysis: SFLAnalysis, out: LLMOutput): SFLAnalysis {
+  const at = out.appraisal?.attitude ?? {};
+  const en = out.appraisal?.engagement ?? {};
+  const gr = out.appraisal?.graduation ?? {};
+  const mm = out.meaning_map ?? {};
 
-function sanitizeTransitivity(t: any): TransitivityAnalysis {
-  const list = (x: unknown): any[] => (Array.isArray(x) ? x : []);
   return {
-    processes: list(t?.processes).map((p) => ({
-      type: str(p?.type),
-      confidence: n01(p?.confidence),
-      trigger: str(p?.trigger),
-    })),
-    participants: list(t?.participants).map((p) => ({
-      role: str(p?.role),
-      entity: str(p?.entity),
-      confidence: n01(p?.confidence),
-    })),
-    circumstances: list(t?.circumstances).map((c) => ({
-      type: str(c?.type),
-      expression: str(c?.expression),
-    })),
-  };
-}
-
-function sanitizeMeaning(m: any): MeaningMap {
-  if (!m || typeof m !== 'object') return NULL_MEANING;
-  return {
-    experiential: n01(m.experiential),
-    interpersonal: n01(m.interpersonal),
-    textual: n01(m.textual),
-    semiotic_torque: n01(m.semiotic_torque),
-    dominant_concept: typeof m.dominant_concept === 'string' ? m.dominant_concept : null,
-    derived_meanings: Array.isArray(m.derived_meanings)
-      ? m.derived_meanings.filter((d: unknown) => typeof d === 'string')
-      : [],
+    ...analysis,
+    appraisal: {
+      attitude: {
+        affect: n01(at.affect),
+        judgement: n01(at.judgement),
+        appreciation: n01(at.appreciation),
+      },
+      engagement: { monogloss: n01(en.monogloss), heterogloss: n01(en.heterogloss) },
+      graduation: { force: n01(gr.force), focus: n01(gr.focus) },
+      raw_appraisal_tokens: strings(out.appraisal?.raw_appraisal_tokens),
+    },
+    transitivity: {
+      processes: (out.transitivity?.processes ?? []).map((p) => ({
+        type: String(p.type ?? ''),
+        confidence: n01(p.confidence),
+        trigger: String(p.trigger ?? ''),
+      })),
+      participants: (out.transitivity?.participants ?? []).map((p) => ({
+        role: String(p.role ?? ''),
+        entity: String(p.entity ?? ''),
+        confidence: n01(p.confidence),
+      })),
+      circumstances: (out.transitivity?.circumstances ?? []).map((c) => ({
+        type: String(c.type ?? ''),
+        expression: String(c.expression ?? ''),
+      })),
+    },
+    meaning_map: {
+      experiential: n01(mm.experiential),
+      interpersonal: n01(mm.interpersonal),
+      textual: n01(mm.textual),
+      semiotic_torque: n01(mm.semiotic_torque),
+      dominant_concept: typeof mm.dominant_concept === 'string' ? mm.dominant_concept : null,
+      derived_meanings: strings(mm.derived_meanings),
+    },
+    vector: buildVectorFromLLM(out.vector),
+    backend: 'proxy',
   };
 }
 
@@ -125,13 +117,13 @@ export class SFLAnalysisService {
   private static demoToken: string | null = null;
   private static hfClient: HFManifoldClient | null = null;
 
-  static setBackend(backend: 'proxy' | 'huggingface') {
-    this.backend = backend;
-  }
-
   static setProxy(demoToken: string, url = '/api/analyze') {
     this.demoToken = demoToken;
     this.proxyUrl = url;
+  }
+
+  static setBackend(backend: 'proxy' | 'huggingface') {
+    this.backend = backend;
   }
 
   static setHfEndpoint(endpoint: string, hfToken?: string | null) {
@@ -148,7 +140,6 @@ export class SFLAnalysisService {
     domain: string,
     metadata: Partial<AnalysisMetadata>
   ): Promise<SFLAnalysis> {
-    const schema = getDomainSchema(domain);
     const timestamp = new Date().toISOString();
 
     const analysis: SFLAnalysis = {
@@ -158,15 +149,22 @@ export class SFLAnalysisService {
       metadata: {
         source_type: metadata.source_type || 'unknown',
         source_id: metadata.source_id || '',
-        domain: schema.id,
+        domain,
         timestamp,
         text_length: text.length,
         language: metadata.language,
       },
-      vector: NULL_VECTOR,
+      vector: { ...NULL_VECTOR },
       appraisal: NULL_APPRAISAL,
       transitivity: { processes: [], participants: [], circumstances: [] },
-      meaning_map: NULL_MEANING,
+      meaning_map: {
+        experiential: null,
+        interpersonal: null,
+        textual: null,
+        semiotic_torque: null,
+        dominant_concept: null,
+        derived_meanings: [],
+      },
       backend: 'pending',
     };
 
@@ -182,25 +180,19 @@ export class SFLAnalysisService {
       headers: { 'Content-Type': 'application/json', 'x-demo-token': this.demoToken },
       body: JSON.stringify({ text: analysis.text, domain: analysis.metadata.domain }),
     });
+
     if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      throw new Error(body?.error ?? `Proxy error ${res.status}`);
+      const err = await res.json().catch(() => ({}));
+      throw new Error((err as { error?: string }).error ?? `Proxy error ${res.status}`);
     }
 
-    const { llm } = await res.json();
-    return {
-      ...analysis,
-      appraisal: sanitizeAppraisal(llm?.appraisal),
-      transitivity: sanitizeTransitivity(llm?.transitivity),
-      meaning_map: sanitizeMeaning(llm?.meaning_map),
-      vector: buildVectorFromLLM(llm?.vector),
-      backend: 'proxy',
-    };
+    const { llm } = (await res.json()) as { llm: LLMOutput };
+    return applyLLM(analysis, llm ?? {});
   }
 
   private static async enrichWithHF(analysis: SFLAnalysis): Promise<SFLAnalysis> {
     if (!this.hfClient) {
-      throw new Error('Hugging Face manifold client not configured. Call setHfSpace or setHfEndpoint first.');
+      throw new Error('Hugging Face manifold client not configured. Call setHfEndpoint or setHfSpace first.');
     }
 
     const hfResponse = await this.hfClient.analyze(analysis.text);
@@ -210,11 +202,12 @@ export class SFLAnalysisService {
       ...analysis,
       vector: buildVectorFromHF(hfVector),
       meaning_map: {
-        ...NULL_MEANING,
-        experiential: n01(hfVector.ideational),
-        interpersonal: n01(hfVector.interpersonal),
-        textual: n01(hfVector.textual),
+        experiential: hfVector.ideational,
+        interpersonal: hfVector.interpersonal,
+        textual: hfVector.textual,
+        semiotic_torque: null,
         dominant_concept: hfResponse.dominant_dimension ?? null,
+        derived_meanings: [],
       },
       backend: 'huggingface',
     };

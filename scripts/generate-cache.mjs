@@ -1,7 +1,6 @@
-// Generates src/data/cachedReviews.ts from REAL runs through the deployed proxy.
 // Usage: DEMO_TOKEN=... node scripts/generate-cache.mjs <base-url> [runs]
-// Input: scripts/reviews.input.json  (array of { id, stars, label, text })
-// Nothing in the output is hand-written: every entry records model, prompt hash and timestamp.
+// Runs each review through the deployed /api/analyze proxy several times and
+// writes the real outputs, with provenance, to src/data/cachedReviews.ts.
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 
 const [base, runsArg] = process.argv.slice(2);
@@ -10,6 +9,7 @@ if (!base || !token) {
   console.error('Usage: DEMO_TOKEN=... node scripts/generate-cache.mjs <base-url> [runs]');
   process.exit(1);
 }
+
 const runs = Number(runsArg ?? 3);
 const reviews = JSON.parse(readFileSync('scripts/reviews.input.json', 'utf8'));
 const DIMS = ['ideational', 'field', 'interpersonal', 'tenor', 'textual', 'mode'];
@@ -26,12 +26,14 @@ for (const r of reviews) {
     if (!res.ok) throw new Error(`${r.id} run ${i + 1}: HTTP ${res.status}`);
     results.push(await res.json());
   }
+
   const stat = (get) => {
     const v = results.map(get).filter((x) => typeof x === 'number');
     return v.length
       ? { mean: v.reduce((a, b) => a + b, 0) / v.length, min: Math.min(...v), max: Math.max(...v), n: v.length }
       : null;
   };
+
   out.push({
     ...r,
     model: results[0].model,
