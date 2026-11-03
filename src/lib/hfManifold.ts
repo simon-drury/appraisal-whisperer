@@ -32,7 +32,9 @@ export interface HFManifoldResponse {
   text?: string;
 }
 
-const num = (v: unknown): number | null => (typeof v === 'number' && isFinite(v) ? v : null);
+// Scores must be finite numbers in [0, 1]; anything else resolves to null, never a default.
+const num = (v: unknown): number | null =>
+  typeof v === 'number' && isFinite(v) && v >= 0 && v <= 1 ? v : null;
 
 export class HFManifoldClient {
   private endpoint: string;

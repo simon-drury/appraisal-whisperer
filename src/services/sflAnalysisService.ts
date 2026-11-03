@@ -24,6 +24,9 @@ const n01 = (v: unknown): number | null =>
 const strings = (v: unknown): string[] =>
   Array.isArray(v) ? v.filter((t): t is string => typeof t === 'string') : [];
 
+// Defensive array guard: a structurally valid response object can still carry non-array fields.
+const arr = <T>(v: T[] | undefined | null): T[] => (Array.isArray(v) ? v : []);
+
 interface LLMOutput {
   appraisal?: {
     attitude?: Record<string, unknown>;
@@ -55,12 +58,12 @@ function buildVectorFromLLM(v: Record<string, unknown> | null | undefined): SFLV
 function buildVectorFromHF(hfVector: HFManifoldVector | null): SFLVector {
   if (!hfVector) return { ...NULL_VECTOR };
   return {
-    ideational: hfVector.ideational,
-    field: hfVector.field,
-    interpersonal: hfVector.interpersonal,
-    tenor: hfVector.tenor,
-    textual: hfVector.textual,
-    mode: hfVector.mode,
+    ideational: n01(hfVector.ideational),
+    field: n01(hfVector.field),
+    interpersonal: n01(hfVector.interpersonal),
+    tenor: n01(hfVector.tenor),
+    textual: n01(hfVector.textual),
+    mode: n01(hfVector.mode),
   };
 }
 
@@ -83,17 +86,17 @@ function applyLLM(analysis: SFLAnalysis, out: LLMOutput): SFLAnalysis {
       raw_appraisal_tokens: strings(out.appraisal?.raw_appraisal_tokens),
     },
     transitivity: {
-      processes: (out.transitivity?.processes ?? []).map((p) => ({
+      processes: arr(out.transitivity?.processes).map((p) => ({
         type: String(p.type ?? ''),
         confidence: n01(p.confidence),
         trigger: String(p.trigger ?? ''),
       })),
-      participants: (out.transitivity?.participants ?? []).map((p) => ({
+      participants: arr(out.transitivity?.participants).map((p) => ({
         role: String(p.role ?? ''),
         entity: String(p.entity ?? ''),
         confidence: n01(p.confidence),
       })),
-      circumstances: (out.transitivity?.circumstances ?? []).map((c) => ({
+      circumstances: arr(out.transitivity?.circumstances).map((c) => ({
         type: String(c.type ?? ''),
         expression: String(c.expression ?? ''),
       })),
@@ -186,8 +189,17 @@ export class SFLAnalysisService {
       throw new Error((err as { error?: string }).error ?? `Proxy error ${res.status}`);
     }
 
-    const { llm } = (await res.json()) as { llm: LLMOutput };
-    return applyLLM(analysis, llm ?? {});
+    const body = (await res.json()) as { llm?: LLMOutput };
+    if (
+      typeof body !== 'object' ||
+      body === null ||
+      typeof body.llm !== 'object' ||
+      body.llm === null ||
+      Array.isArray(body.llm)
+    ) {
+      throw new Error('Proxy returned an invalid response structure');
+    }
+    return applyLLM(analysis, body.llm);
   }
 
   private static async enrichWithHF(analysis: SFLAnalysis): Promise<SFLAnalysis> {

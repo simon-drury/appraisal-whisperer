@@ -101,7 +101,9 @@ export const DOMAIN_SCHEMAS: Record<string, DomainSchema> = {
 };
 
 export function getDomainSchema(domain: string): DomainSchema {
-  return DOMAIN_SCHEMAS[domain] || DOMAIN_SCHEMAS.product_review;
+  return Object.prototype.hasOwnProperty.call(DOMAIN_SCHEMAS, domain)
+    ? DOMAIN_SCHEMAS[domain]
+    : DOMAIN_SCHEMAS.product_review;
 }
 
 export function listDomains(): Array<{ id: string; label: string }> {

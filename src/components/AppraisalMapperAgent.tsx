@@ -97,8 +97,8 @@ export const AppraisalMapperAgent: React.FC<Props> = ({ onAnalysisComplete }) =>
         <CardContent className="space-y-5">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium">Backend</label>
-              <select value={backend} onChange={(e) => setBackend(e.target.value as Backend)}
+              <label htmlFor="backend-select" className="text-sm font-medium">Backend</label>
+              <select id="backend-select" value={backend} onChange={(e) => setBackend(e.target.value as Backend)}
                 className="w-full rounded-md border border-border/50 bg-background/50 p-2 text-sm">
                 <option value="proxy">Live analysis (secured server)</option>
                 <option value="huggingface">Hugging Face manifold (experimental)</option>
@@ -106,18 +106,18 @@ export const AppraisalMapperAgent: React.FC<Props> = ({ onAnalysisComplete }) =>
             </div>
             {backend === 'proxy' ? (
               <div className="space-y-2 md:col-span-2">
-                <label className="text-sm font-medium">Access code</label>
-                <Input type="password" value={demoToken} onChange={(e) => setDemoToken(e.target.value)} placeholder="Access code" />
+                <label htmlFor="demo-token-input" className="text-sm font-medium">Access code</label>
+                <Input id="demo-token-input" type="password" value={demoToken} onChange={(e) => setDemoToken(e.target.value)} placeholder="Access code" />
               </div>
             ) : (
               <>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">HF Space (owner/name)</label>
-                  <Input value={hfSpace} onChange={(e) => setHfSpace(e.target.value)} />
+                  <label htmlFor="hf-space-input" className="text-sm font-medium">HF Space (owner/name)</label>
+                  <Input id="hf-space-input" value={hfSpace} onChange={(e) => setHfSpace(e.target.value)} />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">HF token (optional)</label>
-                  <Input type="password" value={hfToken} onChange={(e) => setHfToken(e.target.value)} placeholder="hf_..." />
+                  <label htmlFor="hf-token-input" className="text-sm font-medium">HF token (optional)</label>
+                  <Input id="hf-token-input" type="password" value={hfToken} onChange={(e) => setHfToken(e.target.value)} placeholder="hf_..." />
                 </div>
               </>
             )}
@@ -125,25 +125,25 @@ export const AppraisalMapperAgent: React.FC<Props> = ({ onAnalysisComplete }) =>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium">Domain</label>
-              <select value={domain} onChange={(e) => setDomain(e.target.value)}
+              <label htmlFor="domain-select" className="text-sm font-medium">Domain</label>
+              <select id="domain-select" value={domain} onChange={(e) => setDomain(e.target.value)}
                 className="w-full rounded-md border border-border/50 bg-background/50 p-2 text-sm">
                 {listDomains().map((d) => <option key={d.id} value={d.id}>{d.label}</option>)}
               </select>
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Source Type</label>
-              <Input value={sourceType} onChange={(e) => setSourceType(e.target.value)} />
+              <label htmlFor="source-type-input" className="text-sm font-medium">Source Type</label>
+              <Input id="source-type-input" value={sourceType} onChange={(e) => setSourceType(e.target.value)} />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Source ID (ASIN)</label>
-              <Input value={sourceId} onChange={(e) => setSourceId(e.target.value)} placeholder="B0XXXXXXXX" />
+              <label htmlFor="source-id-input" className="text-sm font-medium">Source ID (ASIN)</label>
+              <Input id="source-id-input" value={sourceId} onChange={(e) => setSourceId(e.target.value)} placeholder="B0XXXXXXXX" />
             </div>
           </div>
 
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <label className="text-sm font-medium">Text to analyse</label>
+              <label htmlFor="analysis-text" className="text-sm font-medium">Text to analyse</label>
               <div className="flex gap-2">
                 {SAMPLE_REVIEWS.map((s) => (
                   <Button key={s.id} type="button" variant="outline" size="sm" onClick={() => setText(s.text)}>
@@ -152,7 +152,7 @@ export const AppraisalMapperAgent: React.FC<Props> = ({ onAnalysisComplete }) =>
                 ))}
               </div>
             </div>
-            <Textarea value={text} onChange={(e) => setText(e.target.value)} rows={4} className="resize-none" />
+            <Textarea id="analysis-text" value={text} onChange={(e) => setText(e.target.value)} rows={4} className="resize-none" />
             <p className="text-xs text-muted-foreground">Samples A–C are illustrative, synthetic reviews.</p>
           </div>
 
