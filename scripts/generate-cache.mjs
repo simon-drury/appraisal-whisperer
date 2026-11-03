@@ -5,6 +5,7 @@
 // Direct mode calls the LLM provider from this machine using the same prompt as the proxy,
 // so nothing needs to be deployed. It needs tsx because it imports the TypeScript prompt.
 // Optional: PAUSE_MS (default 11000) sets the pause between calls.
+// [runs] must be an integer between 1 and 50 (MAX_RUNS).
 // Runs each review several times and writes the real outputs, with provenance,
 // to src/data/cachedReviews.ts, including per-cell statistics for the 3x3 matrix
 // (rows ideational, interpersonal, textual; columns field, tenor, mode) and its row/column means.
@@ -23,7 +24,13 @@ if (!base || (!direct && !token)) {
   process.exit(1);
 }
 
-const runs = Number(runsArg ?? 3);
+const MAX_RUNS = 50;
+const runsNum = Number(runsArg ?? 3);
+if (!Number.isInteger(runsNum) || runsNum < 1 || runsNum > MAX_RUNS) {
+  console.error(`Invalid runs: ${JSON.stringify(runsArg ?? '3')} - must be an integer between 1 and ${MAX_RUNS}`);
+  process.exit(1);
+}
+const runs = runsNum;
 const pauseMs = Number(process.env.PAUSE_MS ?? 11000);
 const reviews = JSON.parse(readFileSync('scripts/reviews.input.json', 'utf8'));
 const DIMS = ['ideational', 'field', 'interpersonal', 'tenor', 'textual', 'mode'];
