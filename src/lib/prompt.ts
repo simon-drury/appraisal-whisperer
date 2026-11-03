@@ -16,6 +16,12 @@ THE SIX DIMENSIONS:
   5. Textual       — Theme-Rheme architecture, information flow
   6. Mode          — Medium, channel, and rhetorical orientation
 
+THE 3x3 MEANING MATRIX:
+  Rows are the metafunctions (ideational, interpersonal, textual). Columns are the register variables (field, tenor, mode).
+  Cell [row][column] is how strongly that metafunction is realised through that register variable in THIS text, as a float between 0 and 1.
+  Score each of the nine cells independently from textual evidence. Do not copy the six dimension scores into the matrix,
+  and do not derive the six dimension scores from the matrix.
+
 APPRAISAL (Martin & White):
   Attitude: Affect (emotion), Judgement (social evaluation of people), Appreciation (evaluation of things)
   Engagement: Monogloss (single voice) vs Heterogloss (multiple voices, attribution, contraction/expansion)
@@ -62,6 +68,11 @@ Output JSON with this exact structure:
     "tenor": 0-1,
     "textual": 0-1,
     "mode": 0-1
+  },
+  "matrix": {
+    "ideational":    {"field": 0-1, "tenor": 0-1, "mode": 0-1},
+    "interpersonal": {"field": 0-1, "tenor": 0-1, "mode": 0-1},
+    "textual":       {"field": 0-1, "tenor": 0-1, "mode": 0-1}
   }
 }
 
