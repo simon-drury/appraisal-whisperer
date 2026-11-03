@@ -1,155 +1,85 @@
 # Appraisal Whisperer
 
-SFL-based (Systemic Functional Linguistics) analysis system for live music reviews. This application provides deep linguistic analysis of performance reviews, mapping appraisal structures, transitivity patterns, and experiential meaning without sentiment bias.
+SFL (Systemic Functional Linguistics) analysis of any text, ranked on what people said, not on stars. Paste a review or any other text and the app returns appraisal, transitivity, a meaning map and a six-element SFL vector.
 
-## Overview
+## What it does
 
-Appraisal Whisperer implements a sophisticated NLP agent (`AppraisalMapperAgent`) that analyzes concert and performance reviews through the lens of Systemic Functional Linguistics. The system goes beyond surface-level sentiment analysis to reveal underlying meaning structures, evaluative patterns, and semantic relationships.
+- **Appraisal:** attitude (affect, judgement, appreciation), engagement (monogloss, heterogloss) and graduation (force, focus), plus the raw appraisal tokens.
+- **Transitivity:** process types, participant roles and circumstances.
+- **Meaning map:** experiential, interpersonal and textual scores, semiotic torque, dominant concept and derived meanings.
+- **Six-element vector:** ideational, field, interpersonal, tenor, textual and mode, each scored 0 to 1. Metafunctions and register variables are distinct strata and are scored independently; none is bound to another.
+- **Compare samples A-C:** runs three synthetic reviews (generic 5-star, 3-star with high-force judgement, hedged detailed 5-star) and tabulates stars against judgement, force and the six scores.
+- **Export:** every analysis can be exported as a multi-agent event (JSON).
 
-### Core Analysis Features
+Any value the model returns outside 0 to 1 is shown as missing (a dash). It is never replaced by a default.
 
-**Appraisal Analysis**
-- Attitude mapping (affect, judgement, appreciation)
-- Engagement analysis (monogloss/heterogloss)
-- Graduation measurement (force and focus)
+## Architecture
 
-**Transitivity Mapping**
-- Process type identification (material, mental, relational, verbal, behavioural, existential)
-- Participant role analysis
-- Circumstance extraction
+- The browser calls `SFLAnalysisService`, which posts the text and domain to `/api/analyze` with an `x-demo-token` header.
+- `api/analyze.ts` runs server-side. It checks the token, limits text to 3000 characters, applies a rate limit, builds the system prompt from `src/lib/prompt.ts` and calls the OpenAI chat completions API with `temperature: 0` and JSON mode. The OpenAI key never reaches the browser.
+- The response contains `llm` (the model output), `model` and `promptSha` (a short hash of the system prompt) for provenance.
+- An experimental second backend calls a Hugging Face Gradio Space (default `simondrury/sfl-manifold-demo`) and returns only the vector.
 
-**Meaning Mapping**
-- Experiential meaning network construction
-- Semiotic torque detection (meaning drift and recursion)
-- Concept strength and connection analysis
+## Configuration
 
-**Multiagent Integration**
-- Event-based output format for orchestration systems
-- Standalone or orchestrated operation modes
-- Structured data export for downstream agents
+Set these as environment variables on the server (for example in Vercel, Preview and Production scopes):
 
-## Tech Stack
+| Variable | Required | Meaning |
+|---|---|---|
+| `OPENAI_API_KEY` | yes | OpenAI key used by the proxy |
+| `DEMO_TOKEN` | yes | Access code the UI sends in `x-demo-token` |
+| `OPENAI_MODEL` | no | Model name, default `gpt-4o` |
+| `RATE_LIMIT_PER_MIN` | no | Calls per rolling 60 s window per client IP, default 6 |
 
-- **Frontend**: Vite + React + TypeScript
-- **UI**: shadcn/ui + Tailwind CSS
-- **NLP**: OpenAI API (GPT-based SFL analysis)
-- **State Management**: React hooks
-
-## Project Structure
-
-```
-src/
-├── components/
-│   ├── AppraisalMapperAgent.tsx    # Main analysis agent component
-│   └── ui/                         # shadcn/ui components
-├── pages/
-│   ├── Index.tsx                   # Main application page
-│   └── NotFound.tsx
-├── services/
-│   └── sflAnalysisService.ts       # SFL analysis logic
-├── types/
-│   └── sfl.ts                      # TypeScript type definitions
-└── hooks/
-    └── use-toast.ts                # Toast notification hook
-```
-
-## Installation
-
-### Prerequisites
-
-- Node.js (v16 or higher)
-- npm or bun
-- OpenAI API key
-
-### Setup
-
-```bash
-# Clone the repository
-git clone https://github.com/simon-drury/appraisal-whisperer.git
-cd appraisal-whisperer
-
-# Install dependencies
-npm install
-
-# Start development server
-npm run dev
-```
-
-## Usage
-
-1. **Configure API Access**
-   - Enter OpenAI API key in the interface
-   - API key is used client-side only and not stored
-
-2. **Input Performance Details**
-   - Artist/Band name
-   - Event/Venue information
-   - Optional: Custom review text (or use sample data)
-
-3. **Run Analysis**
-   - Click "Start SFL Analysis"
-   - System performs multi-stage linguistic analysis
-   - Results displayed in interactive tabs
-
-4. **Explore Results**
-   - **Appraisal tab**: Attitude, engagement, and graduation metrics
-   - **Transitivity tab**: Process types and participant roles
-   - **Meaning Map tab**: Experiential meaning and semiotic torque
-   - **Export tab**: Multiagent event format (JSON)
-
-## Agent Modes
-
-### Standalone Mode
-```tsx
-<AppraisalMapperAgent agentMode="standalone" />
-```
-Operates independently with full UI for direct user interaction.
-
-### Orchestrated Mode
-```tsx
-<AppraisalMapperAgent 
-  agentMode="orchestrated"
-  onAnalysisComplete={(event) => routeToNextAgent(event)}
-/>
-```
-Integrates with multiagent systems via callback-based event routing.
-
-## SFL Theory Background
-
-Systemic Functional Linguistics treats language as a meaning-making resource organized into three metafunctions:
-
-- **Interpersonal**: How speakers position themselves and interact (via Appraisal)
-- **Ideational**: How experience is represented (via Transitivity)
-- **Textual**: How information is structured and flows
-
-This application focuses on interpersonal and ideational analysis to extract deep semantic structures from performance reviews.
+Proxy responses: 405 for non-POST, 401 for a wrong token, 400 for empty or over-long text, 429 when rate limited, 502 for an upstream error or invalid model JSON, 500 if the server is not configured. The rate limiter is in memory and per server instance, so it is best-effort. The real protections are `DEMO_TOKEN` and a spend cap on the OpenAI key.
 
 ## Development
 
 ```bash
-# Run development server
-npm run dev
-
-# Build for production
+npm ci
+npm run dev        # local dev server (the /api route needs a Vercel-style runtime)
+npm run lint
+npm run verify     # typecheck, then production build
 npm run build
+```
 
-# Preview production build
-npm run preview
+## Cached results
+
+`scripts/generate-cache.mjs` runs the sample reviews through a deployed proxy several times and writes `src/data/cachedReviews.ts` with provenance (model, prompt hash, timestamp, per-dimension mean, min, max and n). The `CachedComparison` table on the page reads that file and makes no live call.
+
+```bash
+DEMO_TOKEN=... node scripts/generate-cache.mjs https://your-deployment.example 3
+```
+
+`PAUSE_MS` (default 11000) sets the pause between calls. On HTTP 429 the script waits 20 s and retries, up to 3 attempts. Keep `DEMO_TOKEN` in an environment file rather than on the command line.
+
+## Project structure
+
+```
+api/analyze.ts                      server-side proxy
+scripts/generate-cache.mjs          cache generator
+scripts/reviews.input.json          sample reviews for the generator
+src/components/AppraisalMapperAgent.tsx   main UI
+src/components/CachedComparison.tsx       cached results table
+src/data/cachedReviews.ts           generated cache (empty until generated)
+src/lib/                            prompt, domain registry, sample reviews, Hugging Face client
+src/services/sflAnalysisService.ts  backend selection and response parsing
+src/types/sfl.ts                    type definitions
+docs/BUILD_VERIFICATION.md          recorded typecheck and build output
 ```
 
 ## Status
 
-- Functional SFL analysis pipeline with OpenAI integration
-- Interactive UI for appraisal, transitivity, and meaning exploration
-- Multiagent event export capability
-- Built with Vite + React + TypeScript + shadcn/ui stack
+- Typecheck and production build pass (see `docs/BUILD_VERIFICATION.md`).
+- Not yet deployed. The live endpoint, including Node ESM resolution of `api/analyze.ts` on Vercel, is untested.
+- The cache has not been generated, so the cached table is empty.
+- The Hugging Face backend is experimental and its Space route is not verified.
+- `npm audit` reports vulnerabilities that have not been addressed.
 
-This repository demonstrates applied computational linguistics suitable for professional NLP portfolio review.
+## SFL background
 
-## Future Enhancements
+SFL organises meaning into three metafunctions (ideational, interpersonal, textual) and three register variables (field, tenor, mode). Appraisal (Martin and White) and Transitivity (Halliday) supply the interpersonal and ideational analysis. This project scores the six elements as independent values and does not assume that any metafunction maps onto any register variable.
 
-- Direct review scraping from concert platforms
-- Batch analysis across multiple reviews
-- Comparative analysis across artists/venues
-- Enhanced visualizations for meaning networks
-- Python backend integration for heavier SFL processing
+## Licence
+
+GNU Affero General Public License v3.

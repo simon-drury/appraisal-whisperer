@@ -1,4 +1,5 @@
 import { AppraisalMapperAgent } from '@/components/AppraisalMapperAgent';
+import { CachedComparison } from '@/components/CachedComparison';
 import { MultiagentEvent } from '@/types/sfl';
 
 const Index = () => {
@@ -14,6 +15,9 @@ const Index = () => {
           onAnalysisComplete={handleAnalysisComplete}
           agentMode="orchestrated"
         />
+        <div className="w-full max-w-6xl mx-auto px-6">
+          <CachedComparison />
+        </div>
       </div>
     </div>
   );
