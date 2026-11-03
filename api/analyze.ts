@@ -18,15 +18,22 @@ type ApiResponse = {
   json(body: unknown): ApiResponse;
 };
 
-// Server-side proxy: the OpenAI key never reaches the browser.
+// Model output may arrive wrapped in a Markdown code fence; strip it before parsing.
+const stripFence = (s: string) =>
+  s.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+
+// Server-side proxy: the LLM key never reaches the browser.
+// Provider is configurable. Defaults to OpenAI. For Gemini set:
+//   LLM_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai
+//   LLM_API_KEY=<Gemini key>   OPENAI_MODEL=<Gemini model name>
 // Rate limiting here is per server instance and best-effort; the real
-// protections are DEMO_TOKEN and a spend cap on the OpenAI key.
+// protections are DEMO_TOKEN and a spend cap on the key.
 // Relative imports carry explicit .js extensions: package.json sets
 // "type": "module", so Node ESM cannot resolve extensionless specifiers.
 export default async function handler(req: ApiRequest, res: ApiResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
 
-  const key = process.env.OPENAI_API_KEY;
+  const key = process.env.LLM_API_KEY ?? process.env.OPENAI_API_KEY;
   const token = process.env.DEMO_TOKEN;
   if (!key || !token) return res.status(500).json({ error: 'Server not configured' });
   if (req.headers['x-demo-token'] !== token) return res.status(401).json({ error: 'Invalid access code' });
@@ -45,8 +52,9 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
   const schema = getDomainSchema(typeof domain === 'string' ? domain : 'product_review');
   const system = buildSystemPrompt(schema);
   const model = process.env.OPENAI_MODEL ?? 'gpt-4o';
+  const baseUrl = (process.env.LLM_BASE_URL ?? 'https://api.openai.com/v1').replace(/\/+$/, '');
 
-  const r = await fetch('https://api.openai.com/v1/chat/completions', {
+  const r = await fetch(`${baseUrl}/chat/completions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
     body: JSON.stringify({
@@ -64,7 +72,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
   const data = await r.json();
   let llm;
   try {
-    llm = JSON.parse(data.choices[0].message.content);
+    llm = JSON.parse(stripFence(data.choices[0].message.content));
   } catch {
     return res.status(502).json({ error: 'Model returned invalid JSON' });
   }
